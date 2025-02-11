@@ -1,5 +1,6 @@
 services:
   es01:
+    platform: linux/amd64
     container_name: ragflow-es-01
     profiles:
       - elasticsearch
