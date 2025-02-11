@@ -17,6 +17,8 @@ import json
 import logging
 from functools import reduce, partial
 import networkx as nx
+import time
+from collections import Counter
 
 from api import settings
 from graphrag.general.community_reports_extractor import CommunityReportsExtractor
@@ -73,18 +75,43 @@ class Dealer:
         logging.info(f"Added {self.graph.number_of_edges()} edges to graph")
 
         with RedisDistributedLock(kb_id, 60*60):
-            old_graph, old_doc_ids = get_graph(tenant_id, kb_id)
-            if old_graph is not None:
-                logging.info(f"Merging with existing graph (nodes: {old_graph.number_of_nodes()}, edges: {old_graph.number_of_edges()})")
-                self.graph = reduce(graph_merge, [old_graph, self.graph])
-                logging.info(f"After merge - nodes: {self.graph.number_of_nodes()}, edges: {self.graph.number_of_edges()}")
+            logging.info(f"Acquired Redis lock for kb_id: {kb_id}")
+            start_time = time.time()
             
+            logging.info("Retrieving existing graph from storage...")
+            old_graph, old_doc_ids = get_graph(tenant_id, kb_id)
+            logging.info(f"Graph retrieval took {time.time() - start_time:.2f} seconds")
+            
+            if old_graph is not None:
+                logging.info(f"Found existing graph - nodes: {old_graph.number_of_nodes()}, edges: {old_graph.number_of_edges()}")
+                logging.info(f"Current graph - nodes: {self.graph.number_of_nodes()}, edges: {self.graph.number_of_edges()}")
+                
+                merge_start = time.time()
+                self.graph = reduce(graph_merge, [old_graph, self.graph])
+                logging.info(f"Graph merge completed in {time.time() - merge_start:.2f} seconds")
+                logging.info(f"After merge - nodes: {self.graph.number_of_nodes()}, edges: {self.graph.number_of_edges()}")
+                
+                # Debug info for merged graph
+                node_types = Counter([data.get('entity_type') for _, data in self.graph.nodes(data=True)])
+                logging.info(f"Node types distribution: {dict(node_types)}")
+            
+            logging.info("Starting pagerank and n-hop neighbor calculation...")
+            pagerank_start = time.time()
             update_nodes_pagerank_nhop_neighbour(tenant_id, kb_id, self.graph, 2)
+            logging.info(f"Pagerank calculation took {time.time() - pagerank_start:.2f} seconds")
+            
             if old_doc_ids:
                 docids.extend(old_doc_ids)
                 docids = list(set(docids))
                 logging.info(f"Updated document IDs, total unique documents: {len(docids)}")
+            
+            
+            save_start = time.time()
             set_graph(tenant_id, kb_id, self.graph, docids)
+            logging.info(f"Graph storage took {time.time() - save_start:.2f} seconds")
+            
+            total_time = time.time() - start_time
+            logging.info(f"Total graph processing time: {total_time:.2f} seconds")
             logging.info("Graph processing and storage completed successfully")
 
 
