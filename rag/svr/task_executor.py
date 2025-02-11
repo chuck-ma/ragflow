@@ -429,11 +429,15 @@ def run_raptor(row, chat_mdl, embd_mdl, vector_size, callback=None):
 
 
 def run_graphrag(row, chat_model, language, embedding_model, callback=None):
+    logging.debug(f"Starting graphrag task for doc_id: {row['doc_id']}, kb_id: {row['kb_id']}")
+    
     chunks = []
+    logging.debug(f"Retrieving chunks for doc_id: {row['doc_id']}")
     for d in settings.retrievaler.chunk_list(row["doc_id"], row["tenant_id"], [str(row["kb_id"])],
                                              fields=["content_with_weight", "doc_id"]):
         chunks.append((d["doc_id"], d["content_with_weight"]))
 
+    logging.info(f"Starting Dealer processing with methods: {row['parser_config']['graphrag']['method']}")
     Dealer(LightKGExt if row["parser_config"]["graphrag"]["method"] != 'general' else GeneralKGExt,
                     row["tenant_id"],
                     str(row["kb_id"]),
@@ -443,6 +447,7 @@ def run_graphrag(row, chat_model, language, embedding_model, callback=None):
                     entity_types=row["parser_config"]["graphrag"]["entity_types"],
                     embed_bdl=embedding_model,
                     callback=callback)
+    logging.info("Dealer processing completed")
 
 
 def do_handle_task(task):
@@ -507,16 +512,23 @@ def do_handle_task(task):
     # Either using graphrag or Standard chunking methods
     elif task.get("task_type", "") == "graphrag":
         start_ts = timer()
+        logging.info(f"Starting graphrag task_id: {task_id}, doc: {task_document_name}")
         try:
             chat_model = LLMBundle(task_tenant_id, LLMType.CHAT, llm_name=task_llm_id, lang=task_language)
+            logging.debug(f"Chat model initialized: {task_llm_id}")
+            
             run_graphrag(task, chat_model, task_language, embedding_model, progress_callback)
-            progress_callback(prog=1.0, msg="Knowledge Graph is done ({:.2f}s)".format(timer() - start_ts))
+            
+            elapsed = timer() - start_ts
+            logging.info(f"Knowledge Graph completed for task_id: {task_id}, time: {elapsed:.2f}s")
+            progress_callback(prog=1.0, msg=f"Knowledge Graph is done ({elapsed:.2f}s)")
         except TaskCanceledException:
+            logging.info(f"Task {task_id} was canceled")
             raise
         except Exception as e:
-            error_message = f'Fail to bind LLM used by Knowledge Graph: {str(e)}'
-            progress_callback(-1, msg=error_message)
+            error_message = f'Failed to process Knowledge Graph for task {task_id}: {str(e)}'
             logging.exception(error_message)
+            progress_callback(-1, msg=error_message)
             raise
         return
     elif task.get("task_type", "") == "graph_resolution":

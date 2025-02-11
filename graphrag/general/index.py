@@ -41,7 +41,10 @@ class Dealer:
                  embed_bdl=None,
                  callback=None
                  ):
+        logging.info(f"Initializing Dealer for kb_id: {kb_id}, language: {language}")
         docids = list(set([docid for docid,_ in chunks]))
+        logging.info(f"Processing {len(chunks)} chunks from {len(docids)} unique documents")
+        
         self.llm_bdl = llm_bdl
         self.embed_bdl = embed_bdl
         ext = extractor(self.llm_bdl, language=language,
@@ -51,29 +54,38 @@ class Dealer:
                         get_relation=partial(get_relation, tenant_id, kb_id),
                         set_relation=partial(set_relation, tenant_id, kb_id, self.embed_bdl)
                         )
+        logging.info(f"Starting entity and relation extraction with {extractor.__name__}")
         ents, rels = ext(chunks, callback)
+        logging.info(f"Extraction completed. Found {len(ents)} entities and {len(rels)} relations")
+        
         self.graph = nx.Graph()
         for en in ents:
             self.graph.add_node(en["entity_name"], entity_type=en["entity_type"])#, description=en["description"])
+        logging.info(f"Added {self.graph.number_of_nodes()} nodes to graph")
+
 
         for rel in rels:
             self.graph.add_edge(
                 rel["src_id"],
                 rel["tgt_id"],
                 weight=rel["weight"],
-                #description=rel["description"]
             )
+        logging.info(f"Added {self.graph.number_of_edges()} edges to graph")
 
         with RedisDistributedLock(kb_id, 60*60):
             old_graph, old_doc_ids = get_graph(tenant_id, kb_id)
             if old_graph is not None:
-                logging.info("Merge with an exiting graph...................")
+                logging.info(f"Merging with existing graph (nodes: {old_graph.number_of_nodes()}, edges: {old_graph.number_of_edges()})")
                 self.graph = reduce(graph_merge, [old_graph, self.graph])
+                logging.info(f"After merge - nodes: {self.graph.number_of_nodes()}, edges: {self.graph.number_of_edges()}")
+            
             update_nodes_pagerank_nhop_neighbour(tenant_id, kb_id, self.graph, 2)
             if old_doc_ids:
                 docids.extend(old_doc_ids)
                 docids = list(set(docids))
+                logging.info(f"Updated document IDs, total unique documents: {len(docids)}")
             set_graph(tenant_id, kb_id, self.graph, docids)
+            logging.info("Graph processing and storage completed successfully")
 
 
 class WithResolution(Dealer):
