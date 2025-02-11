@@ -520,7 +520,7 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
         ParserType.EMAIL.value: email
     }
     parser_config = {"chunk_token_num": 4096, "delimiter": "\n!?;。；！？", "layout_recognize": "Plain Text"}
-    exe = ThreadPoolExecutor(max_workers=12)
+    exe = ThreadPoolExecutor(max_workers=6)
     threads = []
     doc_nm = {}
     for d, blob in files:
