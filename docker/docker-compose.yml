@@ -3,11 +3,11 @@ include:
 
 services:
   ragflow:
-    platform: linux/amd64
     depends_on:
       mysql:
         condition: service_healthy
-    image: dockerpull.org/infiniflow/ragflow:v0.16.0-slim
+    image: infiniflow/ragflow:nightly-slim
+    pull_policy: never
     container_name: ragflow-server
     ports:
       - ${SVR_HTTP_PORT}:9380
