@@ -1,6 +1,5 @@
 services:
   es01:
-    platform: linux/amd64
     container_name: ragflow-es-01
     profiles:
       - elasticsearch
@@ -38,6 +37,7 @@ services:
     restart: on-failure
 
   infinity:
+    platform: linux/amd64
     container_name: ragflow-infinity
     profiles:
       - infinity
