@@ -176,6 +176,10 @@ RUN version_info=$(git describe --tags --match=v* --first-parent --always); \
     echo "RAGFlow version: $version_info"; \
     echo $version_info > /ragflow/VERSION
 
+# 安装依赖后验证
+RUN set -e; \
+    echo "Checking redis installation..."; \
+    uv pip list | grep redis
 # production stage
 FROM base AS production
 USER root

@@ -269,6 +269,27 @@ docker build --build-arg NEED_MIRROR=1 -f Dockerfile -t infiniflow/ragflow:night
    export UV_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
    ```
 
+> [!NOTE]
+> MacOS 用户可能需要先配置 icu4c 环境：
+> ```bash
+> # 1. 确认 icu4c 安装位置和版本
+> brew info icu4c@76
+> 
+> # 2. 设置编译环境变量
+> export ICU_VERSION=76.1
+> export PKG_CONFIG_PATH="/opt/homebrew/opt/icu4c@76/lib/pkgconfig:$PKG_CONFIG_PATH"
+> export PATH="/opt/homebrew/opt/icu4c@76/bin:$PATH"
+> export LDFLAGS="-L/opt/homebrew/opt/icu4c@76/lib"
+> export CPPFLAGS="-I/opt/homebrew/opt/icu4c@76/include"
+> 
+> # 3. 确保 icu4c 正确链接
+> brew unlink icu4c@76 && brew link --force icu4c@76
+> 
+> # 4. 验证配置
+> pkg-config --modversion icu-i18n  # 应该显示76.1
+> which icu-config  # 应该显示正确路径
+> ```
+
 2. 下载源代码并安装 Python 依赖：
 
    ```bash
