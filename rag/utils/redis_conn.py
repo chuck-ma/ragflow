@@ -1,19 +1,3 @@
-#
-#  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
-#
-
 import logging
 import json
 import time
@@ -286,8 +270,9 @@ class RedisDistributedLock:
     def __init__(self, lock_key, ttl=10, timeout=10):
         self.lock_key = lock_key
         self.lock_value = str(uuid.uuid4())
-        self.ttl = ttl  # 锁自动释放时间
-        self.acquire_timeout = timeout  # 获取锁等待时间
+        self.ttl = ttl
+        self.acquire_timeout = timeout
+        self._lock_acquired = False
 
     @staticmethod
     def clean_lock(lock_key):
@@ -295,22 +280,42 @@ class RedisDistributedLock:
 
     def acquire_lock(self):
         end_time = time.time() + self.acquire_timeout
-        retry_count = 0
         while time.time() < end_time:
-            if REDIS_CONN.REDIS.set(self.lock_key, self.lock_value, nx=True, ex=self.ttl):
-                logging.debug(f"Acquired lock {self.lock_key} after {retry_count} retries")
+            acquired = REDIS_CONN.REDIS.set(
+                self.lock_key, 
+                self.lock_value, 
+                nx=True, 
+                ex=self.ttl
+            )
+            if acquired:
+                self._lock_acquired = True
+                logging.debug(f"Acquired lock {self.lock_key}")
                 return True
-            retry_count += 1
-            time.sleep(0.1)
-        logging.info(f"Failed to acquire lock {self.lock_key} after {self.acquire_timeout} seconds")
+            time.sleep(max(0.1, (end_time - time.time()) / 10))
+        logging.warning(f"Failed to acquire lock {self.lock_key}")
         return False
 
     def release_lock(self):
-        if REDIS_CONN.REDIS.get(self.lock_key) == self.lock_value:
-            REDIS_CONN.REDIS.delete(self.lock_key)
+        if not self._lock_acquired:
+            return
+            
+        lua_script = """
+        if redis.call("get",KEYS[1]) == ARGV[1] then
+            return redis.call("del",KEYS[1])
+        else
+            return 0
+        end"""
+        try:
+            REDIS_CONN.REDIS.eval(lua_script, 1, self.lock_key, self.lock_value)
+        except Exception as e:
+            logging.error(f"Release lock failed: {str(e)}")
+        finally:
+            self._lock_acquired = False
 
     def __enter__(self):
-        self.acquire_lock()
+        if self.acquire_lock():
+            return self
+        raise Exception("Failed to acquire lock")
 
-    def __exit__(self, exception_type, exception_value, exception_traceback):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         self.release_lock()
