@@ -205,6 +205,19 @@
 - [service_conf.yaml.template](./docker/service_conf.yaml.template)：配置各类后台服务。
 - [docker-compose.yml](./docker/docker-compose.yml): 系统依赖该文件完成启动。
 
+> [!IMPORTANT]
+> Docker Compose 的环境变量加载优先级（从高到低）：
+> 1. Shell 环境变量（最高优先级）
+> 2. .env 文件（次优先级）
+> 3. environment 块中的默认值（最低优先级）
+>
+> 如果系统环境变量与 .env 文件中的值不一致，Docker Compose 会优先使用系统环境变量。
+> 如遇到此类问题，可以使用 `unset` 命令清除相关的系统环境变量：
+> ```bash
+> # 例如清除 REDIS_PASSWORD 环境变量
+> unset REDIS_PASSWORD
+> ```
+
 请务必确保 [.env](./docker/.env) 文件中的变量设置与 [service_conf.yaml.template](./docker/service_conf.yaml.template) 文件中的配置保持一致！
 
 如果不能访问镜像站点 hub.docker.com 或者模型站点 huggingface.co，请按照 [.env](./docker/.env) 注释修改 `RAGFLOW_IMAGE` 和 `HF_ENDPOINT`。

@@ -280,7 +280,9 @@ class RedisDistributedLock:
 
     def acquire_lock(self):
         end_time = time.time() + self.acquire_timeout
+        attempt = 0
         while time.time() < end_time:
+            attempt += 1
             acquired = REDIS_CONN.REDIS.set(
                 self.lock_key, 
                 self.lock_value, 
@@ -288,17 +290,39 @@ class RedisDistributedLock:
                 ex=self.ttl
             )
             if acquired:
+                logging.debug(f"Lock acquired for {self.lock_key} (attempt {attempt})")
                 self._lock_acquired = True
-                logging.debug(f"Acquired lock {self.lock_key}")
                 return True
+            
+            current_value = REDIS_CONN.REDIS.get(self.lock_key)
+            ttl_remaining = REDIS_CONN.REDIS.ttl(self.lock_key)
+            logging.warning(
+                f"Lock contention detected for {self.lock_key} | "
+                f"Current holder: {current_value} | "
+                f"TTL remaining: {ttl_remaining}s | "
+                f"Attempt {attempt}, retrying in 0.1s"
+            )
+            
             time.sleep(max(0.1, (end_time - time.time()) / 10))
-        logging.warning(f"Failed to acquire lock {self.lock_key}")
+        
+        current_value = REDIS_CONN.REDIS.get(self.lock_key)
+        ttl_remaining = REDIS_CONN.REDIS.ttl(self.lock_key)
+        clients = REDIS_CONN.REDIS.client_list()
+        
+        logging.error(
+            f"Failed to acquire lock {self.lock_key} after {self.acquire_timeout}s | "
+            f"Current holder: {current_value} | "
+            f"TTL remaining: {ttl_remaining}s | "
+            f"Connected clients: {len(clients)}"
+        )
         return False
 
     def release_lock(self):
         if not self._lock_acquired:
+            logging.warning(f"Attempted to release unacquired lock: {self.lock_key}")
             return
-        logging.info(f"Attempting to release lock {self.lock_key}")
+            
+        logging.info(f"Releasing lock {self.lock_key}")
         lua_script = """
         if redis.call("get",KEYS[1]) == ARGV[1] then
             return redis.call("del",KEYS[1])
@@ -306,7 +330,16 @@ class RedisDistributedLock:
             return 0
         end"""
         try:
-            REDIS_CONN.REDIS.eval(lua_script, 1, self.lock_key, self.lock_value)
+            result = REDIS_CONN.REDIS.eval(lua_script, 1, self.lock_key, self.lock_value)
+            if result == 1:
+                logging.info(f"Lock {self.lock_key} released successfully")
+            else:
+                current_value = REDIS_CONN.REDIS.get(self.lock_key)
+                logging.error(
+                    f"Failed to release lock {self.lock_key} | "
+                    f"Expected value: {self.lock_value} | "
+                    f"Actual value: {current_value}"
+                )
         except Exception as e:
             logging.error(f"Release lock failed: {str(e)}")
         finally:
