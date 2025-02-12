@@ -267,7 +267,7 @@ REDIS_CONN = RedisDB()
 
 
 class RedisDistributedLock:
-    def __init__(self, lock_key, ttl=60*20, timeout=10):
+    def __init__(self, lock_key, ttl=60*40, timeout=10):
         self.lock_key = lock_key
         self.lock_value = str(uuid.uuid4())
         self.ttl = ttl

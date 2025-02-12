@@ -75,7 +75,7 @@ class Dealer:
             )
         logging.info(f"Added {self.graph.number_of_edges()} edges to graph")
 
-        with RedisDistributedLock(kb_id, 60*15):
+        with RedisDistributedLock(kb_id, 60*30):
 
             start_time = time.time()
             
