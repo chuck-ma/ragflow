@@ -127,27 +127,29 @@ class WithResolution(Dealer):
         self.llm_bdl = llm_bdl
         self.embed_bdl = embed_bdl
 
-        self.graph, doc_ids = get_graph(tenant_id, kb_id)
-        if not self.graph:
-            logging.error(f"Faild to fetch the graph. tenant_id:{kb_id}, kb_id:{kb_id}")
-            if callback:
-                callback(-1, msg="Faild to fetch the graph.")
-            return
+        with RedisDistributedLock(kb_id, 60*30):
 
-        if callback:
-            callback(msg="Fetch the existing graph.")
-        er = EntityResolution(self.llm_bdl,
-                                get_entity=partial(get_entity, tenant_id, kb_id),
-                                set_entity=partial(set_entity, tenant_id, kb_id, self.embed_bdl),
-                                get_relation=partial(get_relation, tenant_id, kb_id),
-                                set_relation=partial(set_relation, tenant_id, kb_id, self.embed_bdl))
-        reso = er(self.graph)
-        self.graph = reso.graph
-        logging.info("Graph resolution is done. Remove {} nodes.".format(len(reso.removed_entities)))
-        if callback:
-            callback(msg="Graph resolution is done. Remove {} nodes.".format(len(reso.removed_entities)))
-        update_nodes_pagerank_nhop_neighbour(tenant_id, kb_id, self.graph, 2)
-        set_graph(tenant_id, kb_id, self.graph, doc_ids)
+            self.graph, doc_ids = get_graph(tenant_id, kb_id)
+            if not self.graph:
+                logging.error(f"Faild to fetch the graph. tenant_id:{kb_id}, kb_id:{kb_id}")
+                if callback:
+                    callback(-1, msg="Faild to fetch the graph.")
+                return
+
+            if callback:
+                callback(msg="Fetch the existing graph.")
+            er = EntityResolution(self.llm_bdl,
+                                    get_entity=partial(get_entity, tenant_id, kb_id),
+                                    set_entity=partial(set_entity, tenant_id, kb_id, self.embed_bdl),
+                                    get_relation=partial(get_relation, tenant_id, kb_id),
+                                    set_relation=partial(set_relation, tenant_id, kb_id, self.embed_bdl))
+            reso = er(self.graph)
+            self.graph = reso.graph
+            logging.info("Graph resolution is done. Remove {} nodes.".format(len(reso.removed_entities)))
+            if callback:
+                callback(msg="Graph resolution is done. Remove {} nodes.".format(len(reso.removed_entities)))
+            update_nodes_pagerank_nhop_neighbour(tenant_id, kb_id, self.graph, 2)
+            set_graph(tenant_id, kb_id, self.graph, doc_ids)
 
         settings.docStoreConn.delete({
             "knowledge_graph_kwd": "relation",
@@ -182,24 +184,26 @@ class WithCommunity(Dealer):
 
         logging.info(f"Start to extract community reports for {kb_id}")
 
-        self.graph, doc_ids = get_graph(tenant_id, kb_id)
-        if not self.graph:
-            logging.error(f"Faild to fetch the graph. tenant_id:{kb_id}, kb_id:{kb_id}")
-            if callback:
-                callback(-1, msg="Faild to fetch the graph.")
-            return
-        if callback:
-            callback(msg="Fetch the existing graph.")
+        with RedisDistributedLock(kb_id, 60*30):
 
-        cr = CommunityReportsExtractor(self.llm_bdl,
-                              get_entity=partial(get_entity, tenant_id, kb_id),
-                              set_entity=partial(set_entity, tenant_id, kb_id, self.embed_bdl),
-                              get_relation=partial(get_relation, tenant_id, kb_id),
-                              set_relation=partial(set_relation, tenant_id, kb_id, self.embed_bdl))
-        cr = cr(self.graph, callback=callback)
-        self.community_structure = cr.structured_output
-        self.community_reports = cr.output
-        set_graph(tenant_id, kb_id, self.graph, doc_ids)
+            self.graph, doc_ids = get_graph(tenant_id, kb_id)
+            if not self.graph:
+                logging.error(f"Faild to fetch the graph. tenant_id:{kb_id}, kb_id:{kb_id}")
+                if callback:
+                    callback(-1, msg="Faild to fetch the graph.")
+                return
+            if callback:
+                callback(msg="Fetch the existing graph.")
+
+            cr = CommunityReportsExtractor(self.llm_bdl,
+                                get_entity=partial(get_entity, tenant_id, kb_id),
+                                set_entity=partial(set_entity, tenant_id, kb_id, self.embed_bdl),
+                                get_relation=partial(get_relation, tenant_id, kb_id),
+                                set_relation=partial(set_relation, tenant_id, kb_id, self.embed_bdl))
+            cr = cr(self.graph, callback=callback)
+            self.community_structure = cr.structured_output
+            self.community_reports = cr.output
+            set_graph(tenant_id, kb_id, self.graph, doc_ids)
 
         if callback:
             callback(msg="Graph community extraction is done. Indexing {} reports.".format(len(cr.structured_output)))
