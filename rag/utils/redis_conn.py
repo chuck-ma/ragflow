@@ -294,11 +294,15 @@ class RedisDistributedLock:
         REDIS_CONN.REDIS.delete(lock_key)
 
     def acquire_lock(self):
-        end_time = time.time() + self.acquire_timeout  # 使用acquire_timeout
+        end_time = time.time() + self.acquire_timeout
+        retry_count = 0
         while time.time() < end_time:
             if REDIS_CONN.REDIS.set(self.lock_key, self.lock_value, nx=True, ex=self.ttl):
+                logging.debug(f"Acquired lock {self.lock_key} after {retry_count} retries")
                 return True
-            time.sleep(0.1)  # 减小休眠间隔
+            retry_count += 1
+            time.sleep(0.1)
+        logging.info(f"Failed to acquire lock {self.lock_key} after {self.acquire_timeout} seconds")
         return False
 
     def release_lock(self):
