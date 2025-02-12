@@ -75,7 +75,7 @@ class Dealer:
             )
         logging.info(f"Added {self.graph.number_of_edges()} edges to graph")
 
-        with RedisDistributedLock(kb_id, 60*2):
+        with RedisDistributedLock(kb_id, 60*15):
 
             start_time = time.time()
             
@@ -127,7 +127,7 @@ class WithResolution(Dealer):
         self.llm_bdl = llm_bdl
         self.embed_bdl = embed_bdl
 
-        with RedisDistributedLock(kb_id, 60*2):
+        with RedisDistributedLock(kb_id, 60*15):
 
             self.graph, doc_ids = get_graph(tenant_id, kb_id)
             if not self.graph:
@@ -184,7 +184,7 @@ class WithCommunity(Dealer):
 
         logging.info(f"Start to extract community reports for {kb_id}")
 
-        with RedisDistributedLock(kb_id, 60*2):
+        with RedisDistributedLock(kb_id, 60*15):
             logging.info(f"Fetch the existing graph for {kb_id}")
 
             self.graph, doc_ids = get_graph(tenant_id, kb_id)

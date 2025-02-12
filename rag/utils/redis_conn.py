@@ -267,7 +267,7 @@ REDIS_CONN = RedisDB()
 
 
 class RedisDistributedLock:
-    def __init__(self, lock_key, ttl=10, timeout=10):
+    def __init__(self, lock_key, ttl=60*20, timeout=10):
         self.lock_key = lock_key
         self.lock_value = str(uuid.uuid4())
         self.ttl = ttl
@@ -298,7 +298,7 @@ class RedisDistributedLock:
     def release_lock(self):
         if not self._lock_acquired:
             return
-            
+        logging.info(f"Attempting to release lock {self.lock_key}")
         lua_script = """
         if redis.call("get",KEYS[1]) == ARGV[1] then
             return redis.call("del",KEYS[1])
