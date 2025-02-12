@@ -315,7 +315,6 @@ class RedisDistributedLock:
     def __enter__(self):
         if self.acquire_lock():
             return self
-        raise Exception("Failed to acquire lock")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.release_lock()
