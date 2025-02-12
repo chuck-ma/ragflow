@@ -283,21 +283,22 @@ REDIS_CONN = RedisDB()
 
 
 class RedisDistributedLock:
-    def __init__(self, lock_key, timeout=10):
+    def __init__(self, lock_key, ttl=10, timeout=10):
         self.lock_key = lock_key
         self.lock_value = str(uuid.uuid4())
-        self.timeout = timeout
+        self.ttl = ttl  # 锁自动释放时间
+        self.acquire_timeout = timeout  # 获取锁等待时间
 
     @staticmethod
     def clean_lock(lock_key):
         REDIS_CONN.REDIS.delete(lock_key)
 
     def acquire_lock(self):
-        end_time = time.time() + self.timeout
+        end_time = time.time() + self.acquire_timeout  # 使用acquire_timeout
         while time.time() < end_time:
-            if REDIS_CONN.REDIS.setnx(self.lock_key, self.lock_value):
+            if REDIS_CONN.REDIS.set(self.lock_key, self.lock_value, nx=True, ex=self.ttl):
                 return True
-            time.sleep(1)
+            time.sleep(0.1)  # 减小休眠间隔
         return False
 
     def release_lock(self):

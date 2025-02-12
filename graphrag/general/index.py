@@ -75,44 +75,45 @@ class Dealer:
             )
         logging.info(f"Added {self.graph.number_of_edges()} edges to graph")
 
+        with RedisDistributedLock(kb_id, 60*2):
 
-        start_time = time.time()
-        
-        logging.info("Retrieving existing graph from storage...")
-        old_graph, old_doc_ids = get_graph(tenant_id, kb_id)
-        logging.info(f"Graph retrieval took {time.time() - start_time:.2f} seconds")
-        
-        if old_graph is not None:
-            logging.info(f"Found existing graph - nodes: {old_graph.number_of_nodes()}, edges: {old_graph.number_of_edges()}")
-            logging.info(f"Current graph - nodes: {self.graph.number_of_nodes()}, edges: {self.graph.number_of_edges()}")
+            start_time = time.time()
             
-            merge_start = time.time()
-            self.graph = reduce(graph_merge, [old_graph, self.graph])
-            logging.info(f"Graph merge completed in {time.time() - merge_start:.2f} seconds")
-            logging.info(f"After merge - nodes: {self.graph.number_of_nodes()}, edges: {self.graph.number_of_edges()}")
+            logging.info("Retrieving existing graph from storage...")
+            old_graph, old_doc_ids = get_graph(tenant_id, kb_id)
+            logging.info(f"Graph retrieval took {time.time() - start_time:.2f} seconds")
             
-            # Debug info for merged graph
-            node_types = Counter([data.get('entity_type') for _, data in self.graph.nodes(data=True)])
-            logging.info(f"Node types distribution: {dict(node_types)}")
-        
-        logging.info("Starting pagerank and n-hop neighbor calculation...")
-        pagerank_start = time.time()
-        update_nodes_pagerank_nhop_neighbour(tenant_id, kb_id, self.graph, 2)
-        logging.info(f"Pagerank calculation took {time.time() - pagerank_start:.2f} seconds")
-        
-        if old_doc_ids:
-            docids.extend(old_doc_ids)
-            docids = list(set(docids))
-            logging.info(f"Updated document IDs, total unique documents: {len(docids)}")
-        
-        
-        save_start = time.time()
-        set_graph(tenant_id, kb_id, self.graph, docids)
-        logging.info(f"Graph storage took {time.time() - save_start:.2f} seconds")
-        
-        total_time = time.time() - start_time
-        logging.info(f"Total graph processing time: {total_time:.2f} seconds")
-        logging.info("Graph processing and storage completed successfully")
+            if old_graph is not None:
+                logging.info(f"Found existing graph - nodes: {old_graph.number_of_nodes()}, edges: {old_graph.number_of_edges()}")
+                logging.info(f"Current graph - nodes: {self.graph.number_of_nodes()}, edges: {self.graph.number_of_edges()}")
+                
+                merge_start = time.time()
+                self.graph = reduce(graph_merge, [old_graph, self.graph])
+                logging.info(f"Graph merge completed in {time.time() - merge_start:.2f} seconds")
+                logging.info(f"After merge - nodes: {self.graph.number_of_nodes()}, edges: {self.graph.number_of_edges()}")
+                
+                # Debug info for merged graph
+                node_types = Counter([data.get('entity_type') for _, data in self.graph.nodes(data=True)])
+                logging.info(f"Node types distribution: {dict(node_types)}")
+            
+            logging.info("Starting pagerank and n-hop neighbor calculation...")
+            pagerank_start = time.time()
+            update_nodes_pagerank_nhop_neighbour(tenant_id, kb_id, self.graph, 2)
+            logging.info(f"Pagerank calculation took {time.time() - pagerank_start:.2f} seconds")
+            
+            if old_doc_ids:
+                docids.extend(old_doc_ids)
+                docids = list(set(docids))
+                logging.info(f"Updated document IDs, total unique documents: {len(docids)}")
+            
+            
+            save_start = time.time()
+            set_graph(tenant_id, kb_id, self.graph, docids)
+            logging.info(f"Graph storage took {time.time() - save_start:.2f} seconds")
+            
+            total_time = time.time() - start_time
+            logging.info(f"Total graph processing time: {total_time:.2f} seconds")
+            logging.info("Graph processing and storage completed successfully")
 
 
 class WithResolution(Dealer):
@@ -126,7 +127,8 @@ class WithResolution(Dealer):
         self.llm_bdl = llm_bdl
         self.embed_bdl = embed_bdl
 
-        with RedisDistributedLock(kb_id, 60*60):
+        with RedisDistributedLock(kb_id, 60*2):
+
             self.graph, doc_ids = get_graph(tenant_id, kb_id)
             if not self.graph:
                 logging.error(f"Faild to fetch the graph. tenant_id:{kb_id}, kb_id:{kb_id}")
@@ -137,10 +139,10 @@ class WithResolution(Dealer):
             if callback:
                 callback(msg="Fetch the existing graph.")
             er = EntityResolution(self.llm_bdl,
-                                  get_entity=partial(get_entity, tenant_id, kb_id),
-                                  set_entity=partial(set_entity, tenant_id, kb_id, self.embed_bdl),
-                                  get_relation=partial(get_relation, tenant_id, kb_id),
-                                  set_relation=partial(set_relation, tenant_id, kb_id, self.embed_bdl))
+                                    get_entity=partial(get_entity, tenant_id, kb_id),
+                                    set_entity=partial(set_entity, tenant_id, kb_id, self.embed_bdl),
+                                    get_relation=partial(get_relation, tenant_id, kb_id),
+                                    set_relation=partial(set_relation, tenant_id, kb_id, self.embed_bdl))
             reso = er(self.graph)
             self.graph = reso.graph
             logging.info("Graph resolution is done. Remove {} nodes.".format(len(reso.removed_entities)))
@@ -180,7 +182,11 @@ class WithCommunity(Dealer):
         self.llm_bdl = llm_bdl
         self.embed_bdl = embed_bdl
 
-        with RedisDistributedLock(kb_id, 60*60):
+        logging.info(f"Start to extract community reports for {kb_id}")
+
+        with RedisDistributedLock(kb_id, 60*2):
+            logging.info(f"Fetch the existing graph for {kb_id}")
+
             self.graph, doc_ids = get_graph(tenant_id, kb_id)
             if not self.graph:
                 logging.error(f"Faild to fetch the graph. tenant_id:{kb_id}, kb_id:{kb_id}")
