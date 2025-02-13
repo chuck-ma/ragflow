@@ -244,8 +244,9 @@ class QWenChat(Base):
 
     def chat(self, system, history, gen_conf):
         stream_flag = str(os.environ.get('QWEN_CHAT_BY_STREAM', 'true')).lower() == 'true'
-        logging.info(f"QWenChat.chat.stream_flag: {stream_flag}")
+
         if not stream_flag:
+            logging.info(f"QWenChat.chat.stream_flag: {stream_flag}|system: {system}|history: {history}|gen_conf: {gen_conf}")
             from http import HTTPStatus
             if system:
                 history.insert(0, {"role": "system", "content": system})
@@ -280,13 +281,17 @@ class QWenChat(Base):
                 return "**ERROR**: " + "".join(error_msg_list) , 0
             else:
                 final_answer = "".join(result_list[:-1])
-                logging.info(f"QWenChat.chat.stream.ans: {final_answer}")
                 return final_answer, result_list[-1]
 
     def _chat_streamly(self, system, history, gen_conf, incremental_output=False):
         from http import HTTPStatus
         if system:
             history.insert(0, {"role": "system", "content": system})
+            
+        # 记录输入
+        logging.info(f"QWenChat._chat_streamly.input system: {system}")
+        logging.info(f"QWenChat._chat_streamly.input history: {history}")
+        
         ans = ""
         tk_count = 0
         try:
@@ -309,10 +314,16 @@ class QWenChat(Base):
                             ans += LENGTH_NOTIFICATION_EN
                     yield ans
                 else:
-                    yield ans + "\n**ERROR**: " + resp.message if not re.search(r" (key|quota)", str(resp.message).lower()) else "Out of credit. Please set the API key in **settings > Model providers.**"
+                    error_msg = ans + "\n**ERROR**: " + resp.message if not re.search(r" (key|quota)", str(resp.message).lower()) else "Out of credit. Please set the API key in **settings > Model providers.**"
+                    logging.error(f"QWenChat._chat_streamly.error: {error_msg}")
+                    yield error_msg
         except Exception as e:
-            yield ans + "\n**ERROR**: " + str(e)
+            error_msg = ans + "\n**ERROR**: " + str(e)
+            logging.error(f"QWenChat._chat_streamly.exception: {error_msg}")
+            yield error_msg
 
+        # 记录最终完整的输出
+        logging.info(f"QWenChat._chat_streamly.final_output: {ans}")
         yield tk_count
 
     def chat_streamly(self, system, history, gen_conf):

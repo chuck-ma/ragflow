@@ -169,32 +169,44 @@ def label_question(question, kbs):
 
 def chat(dialog, messages, stream=True, **kwargs):
     assert messages[-1]["role"] == "user", "The last content of this conversation is not from user."
+    logging.info(f"[Chat] 开始处理对话，对话ID: {dialog.id} 流式模式: {stream}")
+
 
     chat_start_ts = timer()
 
-    # Get llm model name and model provider name
+    # 1. 模型初始化 ==============================================
     llm_id, model_provider = TenantLLMService.split_model_name_and_factory(dialog.llm_id)
+    logging.debug(f"[LLM Init] 解析模型参数 llm_id: {llm_id} provider: {model_provider}")
 
-    # Get llm model instance by model and provide name
+    # 在获取llm_id和provider后添加
+    logging.info(f"[LLM Detail] Model ID: {llm_id}, Provider: {model_provider}")
+
+    # 获取LLM配置信息
     llm = LLMService.query(llm_name=llm_id) if not model_provider else LLMService.query(llm_name=llm_id, fid=model_provider)
-
     if not llm:
-        # Model name is provided by tenant, but not system built-in
+        logging.debug("[LLM Fallback] 尝试使用租户自定义模型")
         llm = TenantLLMService.query(tenant_id=dialog.tenant_id, llm_name=llm_id) if not model_provider else \
             TenantLLMService.query(tenant_id=dialog.tenant_id, llm_name=llm_id, llm_factory=model_provider)
         if not llm:
+            logging.error(f"[LLM Error] 未找到模型配置: {dialog.llm_id}")
             raise LookupError("LLM(%s) not found" % dialog.llm_id)
-        max_tokens = 8192
+        max_tokens = 8192  # 默认值
     else:
         max_tokens = llm[0].max_tokens
+    logging.info(f"[LLM Config] 最终使用模型: {dialog.llm_id} 最大token数: {max_tokens}")
 
     check_llm_ts = timer()
 
     kbs = KnowledgebaseService.get_by_ids(dialog.kb_ids)
+    logging.debug(f"[KnowledgeBase] 加载知识库数量: {len(kbs)} 知识库ID列表: {dialog.kb_ids}")
+
+    # 检查嵌入模型一致性
     embedding_list = list(set([kb.embd_id for kb in kbs]))
     if len(embedding_list) != 1:
-        yield {"answer": "**ERROR**: Knowledge bases use different embedding models.", "reference": []}
-        return {"answer": "**ERROR**: Knowledge bases use different embedding models.", "reference": []}
+        error_msg = "知识库使用不同的嵌入模型"
+        logging.error(f"[Embedding Error] {error_msg}: {embedding_list}")
+        yield {"answer": f"**ERROR**: {error_msg}", "reference": []}
+        return {"answer": f"**ERROR**: {error_msg}", "reference": []}
 
     embedding_model_name = embedding_list[0]
 
@@ -212,14 +224,22 @@ def chat(dialog, messages, stream=True, **kwargs):
 
     embd_mdl = LLMBundle(dialog.tenant_id, LLMType.EMBEDDING, embedding_model_name)
     if not embd_mdl:
-        raise LookupError("Embedding model(%s) not found" % embedding_model_name)
+        error_msg = f"未找到嵌入模型: {embedding_list[0]}"
+        logging.error(f"[Embedding Error] {error_msg}")
+        raise LookupError(error_msg)
 
     bind_embedding_ts = timer()
 
     if llm_id2llm_type(dialog.llm_id) == "image2text":
+        logging.debug("[Model Type] 使用图像转文本模型")
         chat_mdl = LLMBundle(dialog.tenant_id, LLMType.IMAGE2TEXT, dialog.llm_id)
     else:
+        logging.debug("[Model Type] 使用标准对话模型") 
         chat_mdl = LLMBundle(dialog.tenant_id, LLMType.CHAT, dialog.llm_id)
+
+    # 在判断模型类型后添加
+    model_type = llm_id2llm_type(dialog.llm_id)
+    logging.info(f"[LLM Type] 模型类型: {model_type}")
 
     bind_llm_ts = timer()
 
@@ -246,6 +266,7 @@ def chat(dialog, messages, stream=True, **kwargs):
                 "{%s}" % p["key"], " ")
 
     if len(questions) > 1 and prompt_config.get("refine_multiturn"):
+        logging.debug("[Question Processing] 执行多轮对话优化")
         questions = [full_question(dialog.tenant_id, dialog.llm_id, messages)]
     else:
         questions = questions[-1:]
@@ -297,6 +318,7 @@ def chat(dialog, messages, stream=True, **kwargs):
 
     kwargs["knowledge"] = "\n------\n" + "\n\n------\n\n".join(knowledges)
     gen_conf = dialog.llm_setting
+    logging.debug(f"[Generation Config] 生成参数: {gen_conf}")
 
     msg = [{"role": "system", "content": prompt_config["system"].format(**kwargs)}]
     msg.extend([{"role": m["role"], "content": re.sub(r"##\d+\$\$", "", m["content"])}
@@ -357,6 +379,7 @@ def chat(dialog, messages, stream=True, **kwargs):
         return {"answer": answer, "reference": refs, "prompt": re.sub(r"\n", "  \n", prompt)}
 
     if stream:
+        logging.info("[Stream] 进入流式响应模式")
         last_ans = ""
         answer = ""
         for ans in chat_mdl.chat_streamly(prompt, msg[1:], gen_conf):
@@ -371,12 +394,17 @@ def chat(dialog, messages, stream=True, **kwargs):
             yield {"answer": answer, "reference": {}, "audio_binary": tts(tts_mdl, delta_ans)}
         yield decorate_answer(answer)
     else:
+        logging.info("[Non-Stream] 进入非流式模式")
         answer = chat_mdl.chat(prompt, msg[1:], gen_conf)
         logging.debug("User: {}|Assistant: {}".format(
             msg[-1]["content"], answer))
         res = decorate_answer(answer)
         res["audio_binary"] = tts(tts_mdl, answer)
         yield res
+
+    # 在创建chat_mdl后添加
+    logging.info(f"[LLM Instance] 模型实例类: {chat_mdl.__class__.__name__}")
+    logging.info(f"[LLM Name] 模型名称: {llm_id}")
 
 
 def use_sql(question, field_map, tenant_id, chat_mdl, quota=True):
