@@ -244,6 +244,7 @@ class QWenChat(Base):
 
     def chat(self, system, history, gen_conf):
         stream_flag = str(os.environ.get('QWEN_CHAT_BY_STREAM', 'true')).lower() == 'true'
+        logging.info(f"QWenChat.chat.stream_flag: {stream_flag}")
         if not stream_flag:
             from http import HTTPStatus
             if system:
@@ -275,6 +276,7 @@ class QWenChat(Base):
             result_list = list(g)
             error_msg_list = [item for item in result_list if str(item).find("**ERROR**") >= 0]
             if len(error_msg_list) > 0:
+                logging.error(f"QWenChat.chat.stream.error: {error_msg_list}")
                 return "**ERROR**: " + "".join(error_msg_list) , 0
             else:
                 final_answer = "".join(result_list[:-1])
