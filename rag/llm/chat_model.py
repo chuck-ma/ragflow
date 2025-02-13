@@ -14,7 +14,6 @@
 #  limitations under the License.
 #
 import re
-
 from openai.lib.azure import AzureOpenAI
 from zhipuai import ZhipuAI
 from dashscope import Generation
@@ -28,6 +27,7 @@ import os
 import json
 import requests
 import asyncio
+import logging
 
 LENGTH_NOTIFICATION_CN = "······\n由于长度的原因，回答被截断了，要继续吗？"
 LENGTH_NOTIFICATION_EN = "...\nFor the content length reason, it stopped, continue?"
@@ -53,6 +53,7 @@ class Base(ABC):
                     ans += LENGTH_NOTIFICATION_CN
                 else:
                     ans += LENGTH_NOTIFICATION_EN
+            logging.info(f"ans: {ans}")
             return ans, self.total_token_count(response)
         except openai.APIError as e:
             return "**ERROR**: " + str(e), 0
@@ -74,7 +75,7 @@ class Base(ABC):
                 if not resp.choices[0].delta.content:
                     resp.choices[0].delta.content = ""
                 ans += resp.choices[0].delta.content
-
+                logging.info(f"ans: {ans}")
                 tol = self.total_token_count(resp)
                 if not tol:
                     total_tokens += num_tokens_from_string(resp.choices[0].delta.content)
@@ -266,6 +267,8 @@ class QWenChat(Base):
                         ans += LENGTH_NOTIFICATION_CN
                     else:
                         ans += LENGTH_NOTIFICATION_EN
+
+                logging.info(f"QWenChat.chat.ans: {ans}")
                 return ans, tk_count
 
             return "**ERROR**: " + response.message, tk_count
@@ -302,6 +305,7 @@ class QWenChat(Base):
                             ans += LENGTH_NOTIFICATION_CN
                         else:
                             ans += LENGTH_NOTIFICATION_EN
+                    logging.info(f"QWenChat.chat_streamly.ans: {ans}")
                     yield ans
                 else:
                     yield ans + "\n**ERROR**: " + resp.message if not re.search(r" (key|quota)", str(resp.message).lower()) else "Out of credit. Please set the API key in **settings > Model providers.**"
