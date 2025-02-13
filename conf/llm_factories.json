@@ -105,6 +105,19 @@
                     "model_type": "chat"
                 },
                 {
+                    "llm_name": "deepseek-r1-distill-qwen-1.5b",
+                    "tags": "LLM,CHAT,32K",
+                    "max_tokens": 32768,
+                    "model_type": "chat"
+                },
+
+                {
+                    "llm_name": "deepseek-v3",
+                    "tags": "LLM,CHAT,65K",
+                    "max_tokens": 65536,
+                    "model_type": "chat"
+                },
+                {
                     "llm_name": "qwen-turbo",
                     "tags": "LLM,CHAT,8K",
                     "max_tokens": 8191,

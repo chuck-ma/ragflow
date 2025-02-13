@@ -119,7 +119,7 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: ragflow-redis
-    command: /bin/sh -c 'redis-server --requirepass $REDIS_PASSWORD'
+    command: /bin/sh -c 'redis-server --requirepass $REDIS_PASSWORD --maxmemory 256mb --maxmemory-policy allkeys-lru'
     env_file: .env
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
