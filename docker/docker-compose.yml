@@ -3,11 +3,10 @@ include:
 
 services:
   ragflow:
-    platform: linux/amd64
     depends_on:
       mysql:
         condition: service_healthy
-    image: infiniflow/ragflow:nightly-slim
+    image: ${RAGFLOW_IMAGE}
     pull_policy: never
     container_name: ragflow-server
     ports:
