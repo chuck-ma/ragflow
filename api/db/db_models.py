@@ -288,7 +288,7 @@ class BaseDataBase:
         database_config = settings.DATABASE.copy()
         db_name = database_config.pop("name")
         self.database_connection = PooledDatabase[settings.DATABASE_TYPE.upper()].value(db_name, **database_config)
-        logging.info('init database on cluster mode successfully')
+        logging.info('u: init database on cluster mode successfully')
 
 
 class PostgresDatabaseLock:
